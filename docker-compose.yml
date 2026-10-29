@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: shortener-postgres
+    environment:
+      POSTGRES_DB: shortener
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+    # Host port deliberately NOT 5432: a native Postgres on this machine binds
+    # 127.0.0.1:5432 specifically, which beats Docker's wildcard bind, so the
+    # app would silently connect to that one instead. Container port is
+    # unchanged, so nothing inside the compose network cares.
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: shortener-redis
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    # Same story as Postgres above: a native Redis holds 127.0.0.1:6379.
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

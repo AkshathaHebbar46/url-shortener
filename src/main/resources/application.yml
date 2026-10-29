@@ -1,0 +1,86 @@
+server:
+  port: 8080
+  # Installs Spring's ForwardedHeaderFilter, which rewrites getRemoteAddr()
+  # from X-Forwarded-For. Safe ONLY because Nginx overwrites that header
+  # rather than appending to it — see deploy/nginx.conf and docs/decisions.md.
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: url-shortener
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/shortener
+    username: shortener
+    password: shortener
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: localhost
+      port: 6380
+      timeout: 200ms
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+
+shortener:
+  base-url: http://localhost:8080
+  code-length: 7
+
+  # ---- M4 BASELINE IS THE DEFAULT ----
+  # Out of the box this runs the control-group configuration: no read cache,
+  # ids from the Postgres sequence. Run the baseline load test against this,
+  # record the numbers, and only then switch on the `cached` profile below.
+  id-allocator: sequence        # sequence | redis
+  id-block-size: 1000           # how many ids an instance claims per INCRBY
+
+  cache:
+    enabled: false              # false -> NoOpUrlCache, every redirect hits Postgres
+    ttl: 24h
+    negative-ttl: 60s           # much shorter: see ShortenerProperties.Cache
+    stampede-lock-ttl: 2s
+    click-flush-interval: 30s
+
+  rate-limit:
+    enabled: true
+    shorten-per-minute: 10
+    redirect-per-minute: 100
+    fail-open: true             # Redis down -> serve unlimited rather than refuse
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+---
+# ---- M5 ONWARDS: ./gradlew bootRun --args='--spring.profiles.active=cached'
+# Identical code, identical hardware, cache and Redis allocator switched on.
+# That is what makes run 2 comparable to run 1.
+spring:
+  config:
+    activate:
+      on-profile: cached
+
+shortener:
+  id-allocator: redis
+  cache:
+    enabled: true

@@ -1,0 +1,40 @@
+# systemd unit — works on any Ubuntu/Debian host (Oracle Cloud, Hetzner, a VM,
+# an EC2 box if you ever get one). Copy to /etc/systemd/system/shortener.service
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now shortener
+#   sudo journalctl -u shortener -f
+[Unit]
+Description=URL Shortener
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=shortener
+WorkingDirectory=/opt/shortener
+
+# Credentials come from the environment, never from application.yml. The file
+# is root-owned and mode 600 so the jar can read it and nobody else can.
+EnvironmentFile=/etc/shortener/shortener.env
+
+ExecStart=/usr/bin/java \
+  -XX:MaxRAMPercentage=70 \
+  -XX:+UseG1GC \
+  -jar /opt/shortener/url-shortener.jar \
+  --spring.profiles.active=cached
+
+Restart=on-failure
+RestartSec=5
+
+# The app has no business writing anywhere on disk.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
